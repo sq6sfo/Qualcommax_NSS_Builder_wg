@@ -37,23 +37,25 @@ Or via LuCI: **System → Backup / Flash Firmware**, upload, uncheck "Keep
 settings" for a first-time flash. Coming from stock Xiaomi firmware? Install
 OpenWrt first via the [official guide](https://openwrt.org/toh/xiaomi/ax3600).
 
-**Runtime model:** the image boots as a normal OpenWrt system on the plain host
-stack (Wi-Fi in host mode; the NSS modules are loaded but inert). The `nss`
-service (`/etc/init.d/nss`, runs `/usr/sbin/nss-up`) then arms the NSS data
-plane, boots the firmware, moves the radios onto the wifili path and starts
-ECM (and SQM, once you have configured it); its output lands in the system
-log (`logread -e nss`). **Every boot
-starts on the stock host-only stack** before the service arms NSS, so a reboot is
-always a safe way back — the universal recovery path.
-To stay on the host stack permanently:
-`uci set nss.general.enabled='0'; uci commit nss` (survives sysupgrade).
+**Runtime model:** the `nss` service (`/etc/init.d/nss`) makes the data-path
+decision once, early in boot: it arms the NSS data plane, boots the firmware,
+and loads Wi-Fi with offload already selected — the radios come up directly
+on the wifili path, with no later rebind. Its `/usr/sbin/nss-up` instance
+then layers ECM (and SQM, once you have configured it) on top as the network
+comes up; output lands in the system log (`logread -e nss`). If arming or
+the Wi-Fi offload registration fails, the boot falls back to host-mode Wi-Fi
+and the host stack on its own. **The universal recovery path** is the uci
+flag: `uci set nss.general.enabled='0'; uci commit nss` (survives
+sysupgrade) — with it set, every boot is a stock host-only system.
 
 Check plane health any time with `nss-status` over ssh, or in LuCI under
 **Status → NSS Offload**.
 
-Wi-Fi is **enabled out of the box**: SSID `OpenWrt`, WPA2/WPA3 (`sae-mixed`),
-password `openwrt-nss`. The password is public in this repo — **change it on
-first login** (LuCI → Network → Wireless).
+Wi-Fi ships **configured but disabled**, like any OpenWrt image with no factory
+credentials: the radio paths, band, channel and 802.11k/v options are already
+set, so there is no first-boot detection race, but no image can carry a working
+password without publishing it here. Connect a cable, set an SSID and key in
+LuCI → Network → Wireless, and enable the radios.
 
 ---
 
@@ -70,7 +72,7 @@ included desktop-router config:
 | **Multicast** | `kmod-qca-mcs` — same-subnet multicast hardware-bridged to snooped members |
 | **SQM** | NSS qdiscs (`-qdisc`/`-igs`) + `sqm-scripts-nss` (`nss-edma.qos`, DSCP fast lane both directions) + `luci-app-sqm`. Ships as a **disabled template**: set `download`/`upload` to ~90-95 % of your measured line rate and enable it (LuCI **Network → SQM** or `uci`) — there is no safe universal default rate |
 | **QoS marking** | `nssqos` + `luci-app-nssqos` — DSCP marking & fast-lane prioritization rules (CLI `/etc/config/nssqos`, LuCI **Network → QoS Marking (NSS)**), effective on accelerated flows; the applied class shows per flow in the **DSCP** column of **Status → Realtime → Connections** |
-| **Wi-Fi** | ath11k NSS offload (wifili) on both radios (`CONFIG_ATH11K_NSS_SUPPORT`); enabled by default (SSID `OpenWrt`, WPA2/WPA3, password `openwrt-nss` — change it) |
+| **Wi-Fi** | ath11k NSS offload (wifili) on both radios (`CONFIG_ATH11K_NSS_SUPPORT`); radio paths, band, channel and 802.11k/v preconfigured, interfaces ship disabled with no key — set SSID/key over the LAN port and enable them |
 | **Diagnostics** | `nss-status` CLI health report (now incl. fast-lane counters) + LuCI **Status → NSS Offload** page + per-station firmware Wi-Fi counters (`/sys/kernel/debug/ieee80211/phy*/netdev:*/stations/<mac>/nss_stats`: A-MSDU aggregation, MPDU retries) |
 | **Firmware/profile** | `NSS.FW.12.5-210-HK.R`, MEDIUM memory profile (512 MB) |
 | **Security** | OpenSSH only (post-quantum KEX, AEAD/ETM, RSA ≥ 3072), `PKG_*` hardening (ASLR/PIE, stack protector, FORTIFY_3, RELRO, seccomp), WAN DROP + BCP38, HTTPS redirect, OQS provider in OpenSSL |
@@ -94,8 +96,10 @@ reference network does not use them. Add the package to
 | MACVLAN | `CONFIG_PACKAGE_kmod-macvlan=y` | ECM support via kernel patch `0962`. |
 | GRE | `CONFIG_PACKAGE_kmod-gre=y` | ECM GRE support builds. |
 
-Not available on this platform/firmware: IPsec (ESP) offload, TLS/DTLS, Wi-Fi
-mesh, and CoDel ECN marking. See the
+Not available on this platform/firmware: IPsec (ESP) offload, TLS/DTLS, and
+CoDel ECN marking. (Wi-Fi mesh offload works on an 11.4-firmware build —
+`NSS_FIRMWARE_VERSION_11_4` + `ATH11K_NSS_MESH_SUPPORT`; only the default 12.5
+firmware blocks it.) See the
 [Limitations](https://github.com/JuliusBairaktaris/openwrt-nss-edma/wiki/Limitations-and-Roadmap)
 page.
 
