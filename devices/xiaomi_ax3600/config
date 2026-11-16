@@ -18,3 +18,9 @@ CONFIG_PACKAGE_kmod-ath10k-ct-smallbuffers=m
 
 ## Hardware this board does not have.
 CONFIG_PACKAGE_kmod-phy-aquantia=m
+
+## PBR and Wireguard
+CONFIG_PACKAGE_wireguard-tools=y
+CONFIG_PACKAGE_luci-proto-wireguard=y
+CONFIG_PACKAGE_pbr=y
+CONFIG_PACKAGE_luci-app-pbr=y
